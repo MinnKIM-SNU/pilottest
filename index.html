@@ -4,7 +4,6 @@
   <meta charset="utf-8">
   <title>Forced‑choice Audio Perception Experiment</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <!-- Google Font: 일본어 글리프 포함 -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap">
   <style>
     body{font-family:"Noto Sans JP",sans-serif;text-align:center;padding:2rem;line-height:1.6}
@@ -19,57 +18,53 @@
 <body>
   <h1>Auditory Perception Experiment</h1>
 
-  <!-- ▶▶ LOADING SCREEN ◀◀ -->
   <p id="loading">CSV 로딩 중...</p>
 
-  <!-- ▶▶ START SCREEN ◀◀ -->
   <section id="startArea" class="hidden">
-    <p>준비가 되었으면 <strong>Start</strong>를 눌러 주세요.</p>
+    <p>준비가 되면 <strong>Start</strong>를 누르세요.</p>
     <button id="startBtn" disabled>Start</button>
   </section>
 
-  <!-- ▶▶ PHASE TRANSITION SCREEN ◀◀ -->
   <section id="phaseArea" class="hidden">
     <p id="phaseMsg"></p>
     <button id="phaseNextBtn">다음</button>
   </section>
 
-  <!-- ▶▶ TRIAL SCREEN ◀◀ -->
   <section id="trialArea" class="hidden">
     <p id="instruction">어느 쪽으로 들리는지 선택하세요.</p>
     <div id="choiceArea"></div>
     <p id="feedback" class="hidden"></p>
   </section>
 
-  <!-- ▶▶ FINISH SCREEN ◀◀ -->
   <section id="finishArea" class="hidden">
     <h2>실험이 종료되었습니다!</h2>
     <p>아래 버튼을 눌러 응답을 CSV 파일로 저장하세요.</p>
     <button id="downloadBtn">Download results.csv</button>
   </section>
 
-  <!-- Papa Parse -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script>
-  // ▒▒ 실험 설정 ▒▒
-  const CSV_PATH    = 'example.csv';
-  const AUDIO_DIR   = 'audio/';   // 모든 오디오 파일 "audio/" 폴더
-  const AUDIO_DELAY = 200;        // ms
-  const SOUND_OK    = 'okay.mp3';
-  const SOUND_BEEP  = 'beep.mp3';
+  /* ---------- 실험 기본 설정 ---------- */
+  const CSV_PATH   = 'example.csv';
+  const AUDIO_DIR  = 'audio/';
+  const AUDIO_DELAY = 200;
+  const SOUND_OK   = 'okay.mp3';
+  const SOUND_BEEP = 'beep.mp3';
 
-  // ▒▒ 전역 변수 ▒▒
+  /* ---------- 전역 변수 ---------- */
   let trials = [];
-  let idx    = -1;
+  let idx = -1;
   const logs = [];
   let firstTrainIdx = 0;
   let firstPostIdx  = 0;
   let currentAudio  = null;
+  let trainMsgShown = false;
+  let postMsgShown  = false;
 
   /* Fisher‑Yates shuffle */
-  const shuffle = arr => { for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]];} return arr; };
+  const shuffle = arr => {for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;};
 
-  /* CSV load */
+  /* ---------- CSV 로드 ---------- */
   async function loadCSV(){
     try{
       const text = await fetch(CSV_PATH).then(r=>r.text());
@@ -81,54 +76,57 @@
       firstPostIdx  = pre.length + train.length;
       trials = [...pre,...train,...post];
 
-      // 로딩 완료 UI 업데이트
       document.getElementById('loading').classList.add('hidden');
-      const startBtn = document.getElementById('startBtn');
-      startBtn.disabled = false;
+      document.getElementById('startBtn').disabled = false;
       document.getElementById('startArea').classList.remove('hidden');
     }catch(e){
       document.getElementById('loading').textContent = 'CSV 로드 실패: '+e;
     }
   }
 
-  /* START */
+  /* ---------- 실험 시작 ---------- */
   function startExp(){
     document.getElementById('startArea').classList.add('hidden');
-    idx = -1; // 안전하게 초기화
+    idx = -1;
     nextTrial();
   }
 
-  /* Show phase message */
-  function showPhaseMsg(targetPhase){
-    document.getElementById('trialArea').classList.add('hidden');
-
-    const phaseText = targetPhase === 'train'
-      ? '지금부터는 <strong>트레이닝</strong>이 진행됩니다.<br>다음 버튼을 클릭하여 진행하세요.'
-      : '지금부터는 <strong>확인 테스트</strong>를 진행합니다.<br>다음 버튼을 클릭하여 진행하세요.';
-
-    document.getElementById('phaseMsg').innerHTML = phaseText;
+  /* ---------- Phase 안내 ---------- */
+  function showPhaseMsg(phase){
+    const msg = phase==='train'
+      ? '지금부터는 <strong>트레이닝</strong>이 진행됩니다.<br>다음 버튼을 눌러 진행하세요.'
+      : '지금부터는 <strong>확인 테스트</strong>를 진행합니다.<br>다음 버튼을 눌러 진행하세요.';
+    document.getElementById('phaseMsg').innerHTML = msg;
     document.getElementById('phaseArea').classList.remove('hidden');
-    document.getElementById('phaseNextBtn').onclick = () => {
+    document.getElementById('phaseNextBtn').onclick = ()=>{
       document.getElementById('phaseArea').classList.add('hidden');
       nextTrial();
     };
   }
 
-  /* Play audio */
+  /* ---------- 오디오 재생 ---------- */
   function playAudio(file){
     const src = file.includes('/') ? file : AUDIO_DIR + file;
     if(currentAudio){ currentAudio.pause(); currentAudio=null; }
     currentAudio = new Audio(src);
-    currentAudio.play().catch(e=>console.error('Audio play error:',e));
+    currentAudio.play().catch(err=>console.error('Audio error',err));
   }
 
-  /* Next trial */
+  /* ---------- 다음 Trial ---------- */
   function nextTrial(){
     idx++;
 
-    // Phase transitions
-    if(idx === firstTrainIdx){ idx--; showPhaseMsg('train'); return; }
-    if(idx === firstPostIdx){ idx--; showPhaseMsg('post');  return; }
+    // Phase 안내 (한 번만 표시)
+    if(idx === firstTrainIdx && !trainMsgShown){
+      trainMsgShown = true;
+      showPhaseMsg('train');
+      return;
+    }
+    if(idx === firstPostIdx && !postMsgShown){
+      postMsgShown = true;
+      showPhaseMsg('post');
+      return;
+    }
 
     if(idx >= trials.length){ finishExp(); return; }
 
@@ -139,70 +137,61 @@
 
     const wrap = document.getElementById('choiceArea');
     wrap.innerHTML = '';
-    [t.opt1, t.opt2].forEach(opt=>{
-      const btn = document.createElement('button');
+    [t.opt1,t.opt2].forEach(opt=>{
+      const btn=document.createElement('button');
       btn.textContent = opt;
-      btn.onclick = () => handleChoice(t,opt);
+      btn.onclick = ()=>handleChoice(t,opt);
       wrap.appendChild(btn);
     });
 
     setTimeout(()=>playAudio(t.audio), AUDIO_DELAY);
   }
 
-  /* Handle choice */
+  /* ---------- 응답 처리 ---------- */
   function handleChoice(trial, choice){
     const isTrain = trial.phase.trim()==='train';
     const correct = choice === trial.answer;
 
-    logs.push({
-      type:trial.type,
-      audio:trial.audio,
-      cue1:trial.cue1,
-      cue2:trial.cue2,
-      phase:trial.phase,
-      choice,
-      correct: isTrain ? correct : ''
-    });
+    logs.push({type:trial.type,audio:trial.audio,cue1:trial.cue1,cue2:trial.cue2,phase:trial.phase,choice,correct:isTrain?correct:''});
 
-    const fbEl = document.getElementById('feedback');
-    fbEl.textContent = correct ? '정답입니다!' : '정답이 아닙니다';
-    fbEl.className   = correct ? 'correct' : 'wrong';
+    const fb = document.getElementById('feedback');
+    fb.textContent = correct ? '정답입니다!' : '정답이 아닙니다';
+    fb.className   = correct ? 'correct' : 'wrong';
 
     if(isTrain){
-      fbEl.classList.remove('hidden');
-      playAudio(correct ? SOUND_OK : SOUND_BEEP);
-      setTimeout(()=>{ fbEl.classList.add('hidden'); nextTrial(); }, 3500);
+      fb.classList.remove('hidden');
+      playAudio(correct?SOUND_OK:SOUND_BEEP);
+      setTimeout(()=>{fb.classList.add('hidden');nextTrial();},3500);
     }else{
       nextTrial();
     }
   }
 
-  /* Finish */
+  /* ---------- 실험 종료 ---------- */
   function finishExp(){
     document.getElementById('trialArea').classList.add('hidden');
     document.getElementById('finishArea').classList.remove('hidden');
   }
 
-  /* Download CSV */
+  /* ---------- 결과 CSV 다운로드 ---------- */
   function downloadCSV(){
-    const header = 'type,audio,cue1,cue2,phase,choice,correct\n';
-    const rows = logs.map(l=>[l.type,l.audio,l.cue1,l.cue2,l.phase,l.choice,l.correct].join(',')).join('\n');
-    const blob = new Blob([header+rows],{type:'text/csv'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'results.csv';
-    a.click();
-    URL.revokeObjectURL(a.href);
+    const header='type,audio,cue1,cue2,phase,choice,correct\n';
+    const rows=logs.map(l=>[l.type,l.audio,l.cue1,l.cue2,l.phase,l.choice,l.correct].join(',')).join('\n');
+    const blob=new Blob([header+rows],{type:'text/csv'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download='results.csv'; a.click();
+    URL.revokeObjectURL(url);
   }
 
-  /* Event bindings */
-  document.getElementById('startBtn').onclick    = startExp;
-  document.getElementById('downloadBtn').onclick = downloadCSV;
+  /* ---------- 이벤트 바인딩 ---------- */
+  document.getElementById('startBtn').onclick=startExp;
+  document.getElementById('downloadBtn').onclick=downloadCSV;
 
-  // CSV 로드 후 Start 활성화
   loadCSV();
   </script>
 </body>
 </html>
+
 
 
