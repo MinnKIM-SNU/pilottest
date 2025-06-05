@@ -49,7 +49,7 @@
   <script>
   // ▒▒ 실험 설정 ▒▒
   const CSV_PATH    = 'example.csv';
-  const AUDIO_DIR   = 'audio/';   // 기본 오디오 폴더 (공백 '' = 루트)
+  const AUDIO_DIR   = 'audio/';   // 모든 오디오 파일을 "audio/" 폴더에 저장
   const AUDIO_DELAY = 200;        // 버튼‑클릭 → 오디오까지 딜레이(ms)
   const SOUND_OK    = 'okay.mp3';
   const SOUND_BEEP  = 'beep.mp3';
@@ -104,9 +104,8 @@
 
   /* Play audio helper: 자동 경로 인식 */
   function playAudio(file){
-    // 이미 전체/상대 경로가 포함돼 있다면 그대로, 아니면 기본 폴더 접두사 추가
-    const isDirectPath = /^(https?:)?\/|\//.test(file); // '/', 'http://', 'https://', '//' 등 포함 확인
-    const src = isDirectPath ? file : AUDIO_DIR + file;
+    // 이미 '/'가 있으면 그대로, 아니면 AUDIO_DIR 접두사 추가
+    const src = file.includes('/') ? file : AUDIO_DIR + file;
 
     if(currentAudio){ currentAudio.pause(); currentAudio=null; }
     currentAudio = new Audio(src);
@@ -190,11 +189,6 @@
 
   /* Events */
   document.getElementById('startBtn').onclick    = startExp;
-  document.getElementById('downloadBtn').onclick = downloadCSV;
+  document
 
-  /* Init */
-  loadCSV();
-  </script>
-</body>
-</html>
 
