@@ -47,9 +47,14 @@
   /* ===== CONFIG ===== */
   const CSV_PATH   = 'example.csv';
   const AUDIO_DIR  = 'audio/';
-  const AUDIO_DELAY = 200;
+  const AUDIO_DELAY = 20;
   const SOUND_OK   = 'okay.mp3';
   const SOUND_BEEP = 'beep.mp3';
+
+  // 반복 횟수
+  const PRE_REPS   = 3;
+  const TRAIN_REPS = 5;
+  const POST_REPS  = 3;
 
   /* ===== STATE ===== */
   let trials = [];
@@ -63,17 +68,26 @@
 
   const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
 
+  /* Utility: repeat & shuffle block */
+  const repeatBlock=(arr,n)=>{let out=[];for(let i=0;i<n;i++){out=[...out,...shuffle([...arr])];}return out;};
+
   /* === CSV LOAD === */
   async function loadCSV(){
     try{
       const text = await fetch(CSV_PATH).then(r=>r.text());
       const data = Papa.parse(text,{header:true,skipEmptyLines:true}).data;
-      const pre   = shuffle(data.filter(d=>d.phase.trim()==='pre'));
-      const train = shuffle(data.filter(d=>d.phase.trim()==='train'));
-      const post  = shuffle(data.filter(d=>d.phase.trim()==='post'));
-      firstTrainIdx = pre.length;
-      firstPostIdx  = pre.length + train.length;
-      trials=[...pre,...train,...post];
+      const preBase   = data.filter(d=>d.phase.trim()==='pre');
+      const trainBase = data.filter(d=>d.phase.trim()==='train');
+      const postBase  = data.filter(d=>d.phase.trim()==='post');
+
+      const preRep   = repeatBlock(preBase,PRE_REPS);
+      const trainRep = repeatBlock(trainBase,TRAIN_REPS);
+      const postRep  = repeatBlock(postBase,POST_REPS);
+
+      firstTrainIdx = preRep.length;
+      firstPostIdx  = preRep.length + trainRep.length;
+      trials        = [...preRep,...trainRep,...postRep];
+
       $('#loading').classList.add('hidden');
       $('#startBtn').disabled=false;
       $('#startArea').classList.remove('hidden');
@@ -119,46 +133,40 @@
 
   function choose(trial, choiceText){
     const isTrain = trial.phase.trim() === 'train';
-
-    // 사용자가 고른 것이 opt1 / opt2 중 어떤 것인지 표시
     const choiceKey = (choiceText === trial.opt1) ? 'opt1' : 'opt2';
-
-    // 정답 판단: answer 열이 opt1/opt2 로 되어 있다고 가정
     const isCorrect = isTrain ? (choiceKey === trial.answer.trim()) : '';
 
-    logs.push({
-      type:   trial.type,
-      audio:  trial.audio,
-      cue1:   trial.cue1,
-      cue2:   trial.cue2,
-      phase:  trial.phase,
-      choice: choiceKey,
-      correct:isCorrect
-    });
+    logs.push({type:trial.type,audio:trial.audio,cue1:trial.cue1,cue2:trial.cue2,phase:trial.phase,choice:choiceKey,correct:isCorrect});
 
-    // Trial UI 숨기기
     $('#instruction').classList.add('hidden');
-    $('#choiceArea').innerHTML = '';
+    $('#choiceArea').innerHTML='';
 
     if(isTrain){
-      const fb = $('#feedback');
-      fb.textContent = isCorrect ? '정답입니다!' : '정답이 아닙니다';
-      fb.className   = isCorrect ? 'correct' : 'wrong';
+      const fb=$('#feedback');
+      fb.textContent=isCorrect?'정답입니다!':'정답이 아닙니다';
+      fb.className=isCorrect?'correct':'wrong';
       fb.classList.remove('hidden');
-      playAudio(isCorrect ? SOUND_OK : SOUND_BEEP);
-      setTimeout(() => nextTrial(), 3500);
+      playAudio(isCorrect?SOUND_OK:SOUND_BEEP);
+      setTimeout(()=>nextTrial(),1200);
     }else{
-      setTimeout(() => nextTrial(), 300);
+      setTimeout(()=>nextTrial(),20);
     }
   }
 
   /* === FINISH === */
   function finishExp(){ $('#trialArea').classList.add('hidden'); $('#finishArea').classList.remove('hidden'); }
-  function dlCSV(){ const head='type,audio,cue1,cue2,phase,choice,correct\n'; const rows=logs.map(l=>[l.type,l.audio,l.cue1,l.cue2,l.phase,l.choice,l.correct].join(',')).join('\n'); const blob=new Blob([head+rows],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='results.csv'; a.click(); }
+  function dlCSV(){
+    const head='type,audio,cue1,cue2,phase,choice,correct\n';
+    const rows=logs.map(l=>[l.type,l.audio,l.cue1,l.cue2,l.phase,l.choice,l.correct].join(',')).join('\n');
+    const blob=new Blob(["\uFEFF"+head+rows],{type:'text/csv;charset=utf-8;'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='results.csv'; a.click();
+  }
 
   /* === INIT === */
   $('#startBtn').onclick=startExp; $('#downloadBtn').onclick=dlCSV; loadCSV();
   </script>
 </body>
 </html>
+
 
