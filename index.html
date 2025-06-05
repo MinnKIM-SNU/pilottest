@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Forced‑choice Audio Perception Experiment</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body{font-family:sans-serif;text-align:center;padding:2rem;line-height:1.6}
+    #choiceArea button{font-size:1.5rem;margin:1rem;padding:.6rem 2.5rem;border:2px solid #444;border-radius:.5rem;cursor:pointer}
+    #choiceArea button:hover{background:#eee}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+  <h1>Auditory Perception Experiment</h1>
+
+  <!-- ▶▶ START SCREEN ◀◀ -->
+  <section id="startArea">
+    <p>준비가 되면 <strong>Start</strong> 버튼을 누르세요.</p>
+    <button id="startBtn">Start</button>
+  </section>
+
+  <!-- ▶▶ TRIAL SCREEN ◀◀ -->
+  <section id="trialArea" class="hidden">
+    <p id="phaseLabel" style="font-weight:bold"></p>
+    <p id="instruction">어느 쪽으로 들리는지 선택하세요.</p>
+    <div id="choiceArea"></div>
+  </section>
+
+  <!-- ▶▶ FINISH SCREEN ◀◀ -->
+  <section id="finishArea" class="hidden">
+    <h2>실험이 종료되었습니다!</h2>
+    <p>아래 버튼을 눌러 응답을 CSV 파일로 저장하세요.</p>
+    <button id="downloadBtn">Download results.csv</button>
+  </section>
+
+  <!-- Papa Parse: CSV 파서 -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script>
+  // ▒▒ 실험 설정 ▒▒
+  const CSV_PATH   = 'example.csv';  // 실험 trial 정의 CSV
+  const AUDIO_DIR  = 'audio/';       // 오디오 파일 폴더 (GitHub Pages에 같이 업로드)
+  const AUDIO_DELAY = 200;           // 버튼 누른 뒤 오디오 재생 지연(ms)
+
+  // ▒▒ 전역 변수 ▒▒
+  let trials = [];        // 전체 trial 배열 (pre→train→post 순)
+  let idx    = -1;        // 현재 trial 인덱스
+  const logs = [];        // 응답 로그
+
+  /* Fisher‑Yates 셔플 */
+  function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]] = [arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  /* CSV 로딩 & trial 배열 구성 */
+  function loadCSV(){
+    fetch(CSV_PATH)
+      .then(r=>r.text())
+      .then(text=>{
+        const data = Papa.parse(text,{header:true,skipEmptyLines:true}).data;
+        const pre   = shuffle(data.filter(d=>d.phase.trim()==='pre'));
+        const train = shuffle(data.filter(d=>d.phase.trim()==='train'));
+        const post  = shuffle(data.filter(d=>d.phase.trim()==='post'));
+        trials = [...pre,...train,...post];
+      });
+  }
+
+  /* 실험 시작 */
+  function startExp(){
+    document.getElementById('startArea').classList.add('hidden');
+    document.getElementById('trialArea').classList.remove('hidden');
+    nextTrial();
+  }
+
+  /* 다음 trial 실행 */
+  function nextTrial(){
+    idx++;
+    if(idx>=trials.length) return finishExp();
+
+    const t = trials[idx];
+    document.getElementById('phaseLabel').textContent = `Phase : ${t.phase}`;
+
+    // 선택지 버튼 UI 그리기
+    const wrap = document.getElementById('choiceArea');
+    wrap.innerHTML = '';
+    [t.opt1,t.opt2].forEach(opt=>{
+      const btn = document.createElement('button');
+      btn.textContent = opt;
+      btn.onclick = ()=> handleChoice(t,opt);
+      wrap.appendChild(btn);
+    });
+
+    // 0.2 초 뒤 오디오 재생
+    setTimeout(()=>{
+      const audio = new Audio(AUDIO_DIR + t.audio);
+      audio.play();
+    }, AUDIO_DELAY);
+  }
+
+  /* 응답 처리 */
+  function handleChoice(trial,choice){
+    logs.push({type:trial.type,file:trial.audio,phase:trial.phase,choice});
+    nextTrial();
+  }
+
+  /* 실험 종료 */
+  function finishExp(){
+    document.getElementById('trialArea').classList.add('hidden');
+    document.getElementById('finishArea').classList.remove('hidden');
+  }
+
+  /* 결과 CSV 다운로드 */
+  function downloadCSV(){
+    const header = 'type,file,phase,choice\n';
+    const rows = logs.map(l=>`${l.type},${l.file},${l.phase},${l.choice}`).join('\n');
+    const blob = new Blob([header+rows],{type:'text/csv'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'results.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /* 이벤트 바인딩 */
+  document.getElementById('startBtn').onclick    = startExp;
+  document.getElementById('downloadBtn').onclick = downloadCSV;
+
+  /* 초기화 */
+  loadCSV();
+  </script>
+</body>
+</html>
