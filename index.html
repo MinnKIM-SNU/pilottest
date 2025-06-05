@@ -48,50 +48,52 @@
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script>
   // ▒▒ 실험 설정 ▒▒
-  const CSV_PATH    = 'example.csv';   // trial 정의 CSV
-  const AUDIO_DIR   = 'audio/';        // 오디오 폴더
-  const AUDIO_DELAY = 200;             // 버튼 → 오디오 딜레이(ms)
-
-  const SOUND_OK   = 'okay.mp3';       // 정답 피드백
-  const SOUND_BEEP = 'beep.mp3';       // 오답 피드백
+  const CSV_PATH    = 'example.csv';
+  const AUDIO_DIR   = 'audio/';   // 기본 오디오 폴더 (공백 '' = 루트)
+  const AUDIO_DELAY = 200;        // 버튼‑클릭 → 오디오까지 딜레이(ms)
+  const SOUND_OK    = 'okay.mp3';
+  const SOUND_BEEP  = 'beep.mp3';
 
   // ▒▒ 전역 변수 ▒▒
-  let trials = [];               // 전체 trial 배열 (pre → train → post)
-  let idx    = -1;               // 현재 trial 인덱스
-  const logs = [];               // 응답 로그
-  let firstTrainIdx = 0;         // train 시작 인덱스
-  let firstPostIdx  = 0;         // post 시작 인덱스
+  let trials = [];
+  let idx    = -1;
+  const logs = [];
+  let firstTrainIdx = 0;
+  let firstPostIdx  = 0;
+  let currentAudio  = null; // 재생 중인 오디오 참조
 
-  /* Fisher‑Yates 셔플 */
+  /* Fisher‑Yates shuffle */
   const shuffle = arr => { for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]];} return arr; };
 
-  /* CSV 로딩 */
-  function loadCSV(){
-    fetch(CSV_PATH)
-      .then(r=>r.text())
-      .then(text=>{
-        const data = Papa.parse(text,{header:true,skipEmptyLines:true}).data;
-        const pre   = shuffle(data.filter(d=>d.phase.trim()==='pre'));
-        const train = shuffle(data.filter(d=>d.phase.trim()==='train'));
-        const post  = shuffle(data.filter(d=>d.phase.trim()==='post'));
-        firstTrainIdx = pre.length;
-        firstPostIdx  = pre.length + train.length;
-        trials = [...pre,...train,...post];
-      });
+  /* CSV load */
+  async function loadCSV(){
+    const text = await fetch(CSV_PATH).then(r=>r.text());
+    const data = Papa.parse(text,{header:true,skipEmptyLines:true}).data;
+    const pre   = shuffle(data.filter(d=>d.phase.trim()==='pre'));
+    const train = shuffle(data.filter(d=>d.phase.trim()==='train'));
+    const post  = shuffle(data.filter(d=>d.phase.trim()==='post'));
+    firstTrainIdx = pre.length;
+    firstPostIdx  = pre.length + train.length;
+    trials = [...pre,...train,...post];
   }
 
-  /* 실험 시작 */
+  /* START */
   function startExp(){
     document.getElementById('startArea').classList.add('hidden');
     nextTrial();
   }
 
-  /* PHASE 안내 화면 */
-  function showPhaseMsg(phase){
-    const msgEl = document.getElementById('phaseMsg');
-    msgEl.innerHTML = phase==='train'
+  /* Show phase message */
+  function showPhaseMsg(targetPhase){
+    // 기존 trial 화면 숨기기
+    document.getElementById('trialArea').classList.add('hidden');
+
+    const phaseText = targetPhase === 'train'
       ? '지금부터는 <strong>트레이닝</strong>이 진행됩니다.<br>다음 버튼을 클릭하여 진행하세요.'
       : '지금부터는 <strong>확인 테스트</strong>를 진행합니다.<br>다음 버튼을 클릭하여 진행하세요.';
+
+    const msgEl = document.getElementById('phaseMsg');
+    msgEl.innerHTML = phaseText;
 
     document.getElementById('phaseArea').classList.remove('hidden');
     document.getElementById('phaseNextBtn').onclick = () => {
@@ -100,43 +102,51 @@
     };
   }
 
-  /* 다음 trial 실행 */
+  /* Play audio helper: 자동 경로 인식 */
+  function playAudio(file){
+    // 이미 전체/상대 경로가 포함돼 있다면 그대로, 아니면 기본 폴더 접두사 추가
+    const isDirectPath = /^(https?:)?\/|\//.test(file); // '/', 'http://', 'https://', '//' 등 포함 확인
+    const src = isDirectPath ? file : AUDIO_DIR + file;
+
+    if(currentAudio){ currentAudio.pause(); currentAudio=null; }
+    currentAudio = new Audio(src);
+    currentAudio.play().catch(e=>console.error('Audio play error:',e));
+  }
+
+  /* Next trial */
   function nextTrial(){
     idx++;
 
-    // phase 전환 체크
-    if(idx === firstTrainIdx){ showPhaseMsg('train'); return; }
-    if(idx === firstPostIdx){ showPhaseMsg('post'); return; }
+    // Phase transition check BEFORE showing trial
+    if(idx === firstTrainIdx){ idx--; showPhaseMsg('train'); return; }
+    if(idx === firstPostIdx){ idx--; showPhaseMsg('post');  return; }
 
     if(idx >= trials.length){ finishExp(); return; }
 
     const t = trials[idx];
 
-    // Trial UI 표시
+    // prepare trial UI
     document.getElementById('trialArea').classList.remove('hidden');
+    document.getElementById('feedback').classList.add('hidden');
 
-    // 선택지 버튼 그리기
     const wrap = document.getElementById('choiceArea');
     wrap.innerHTML = '';
     [t.opt1, t.opt2].forEach(opt=>{
       const btn = document.createElement('button');
       btn.textContent = opt;
-      btn.onclick = ()=> handleChoice(t,opt);
+      btn.onclick = () => handleChoice(t, opt);
       wrap.appendChild(btn);
     });
 
-    // 오디오 재생 (delay)
-    setTimeout(()=>{
-      new Audio(AUDIO_DIR + t.audio).play();
-    }, AUDIO_DELAY);
+    // delayed audio play
+    setTimeout(()=> playAudio(t.audio), AUDIO_DELAY);
   }
 
-  /* 응답 처리 */
-  function handleChoice(trial,choice){
+  /* Handle choice */
+  function handleChoice(trial, choice){
     const isTrain = trial.phase.trim()==='train';
     const correct = choice === trial.answer;
 
-    // 로그 기록
     logs.push({
       type:trial.type,
       audio:trial.audio,
@@ -148,43 +158,41 @@
     });
 
     const fbEl = document.getElementById('feedback');
-    fbEl.classList.add('hidden');
+    fbEl.textContent = correct ? '정답입니다!' : '정답이 아닙니다';
+    fbEl.className = correct ? 'correct' : 'wrong';
 
     if(isTrain){
-      fbEl.textContent = correct ? '정답입니다!' : '정답이 아닙니다';
-      fbEl.className = correct ? 'correct' : 'wrong';
       fbEl.classList.remove('hidden');
-      new Audio(AUDIO_DIR + (correct ? SOUND_OK : SOUND_BEEP)).play();
-      setTimeout(()=>{ fbEl.classList.add('hidden'); nextTrial(); }, 3500); // ★ 3.5초 대기 후 다음 trial
-    }else{
+      playAudio(correct ? SOUND_OK : SOUND_BEEP);
+      setTimeout(()=>{ fbEl.classList.add('hidden'); nextTrial(); }, 3500);
+    } else {
       nextTrial();
     }
   }
 
-  /* 실험 종료 */
+  /* Finish */
   function finishExp(){
     document.getElementById('trialArea').classList.add('hidden');
     document.getElementById('finishArea').classList.remove('hidden');
   }
 
-  /* 결과 CSV 다운로드 */
+  /* Download CSV */
   function downloadCSV(){
     const header = 'type,audio,cue1,cue2,phase,choice,correct\n';
     const rows = logs.map(l=>[l.type,l.audio,l.cue1,l.cue2,l.phase,l.choice,l.correct].join(',')).join('\n');
     const blob = new Blob([header+rows],{type:'text/csv'});
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
     a.download = 'results.csv';
     a.click();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(a.href);
   }
 
-  /* 이벤트 */
+  /* Events */
   document.getElementById('startBtn').onclick    = startExp;
   document.getElementById('downloadBtn').onclick = downloadCSV;
 
-  /* 초기화 */
+  /* Init */
   loadCSV();
   </script>
 </body>
