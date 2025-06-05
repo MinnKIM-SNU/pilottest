@@ -20,26 +20,22 @@
 
   <p id="loading">CSV 로딩 중...</p>
 
-  <!-- ▶ Start screen -->
   <section id="startArea" class="hidden">
     <p>준비가 되면 <strong>Start</strong>를 누르세요.</p>
     <button id="startBtn" disabled>Start</button>
   </section>
 
-  <!-- ▶ Phase transition screen -->
   <section id="phaseArea" class="hidden">
     <p id="phaseMsg"></p>
     <button id="phaseNextBtn">다음</button>
   </section>
 
-  <!-- ▶ Trial screen -->
   <section id="trialArea" class="hidden">
     <p id="instruction">어느 쪽으로 들리는지 선택하세요.</p>
     <div id="choiceArea"></div>
     <p id="feedback" class="hidden"></p>
   </section>
 
-  <!-- ▶ Finish -->
   <section id="finishArea" class="hidden">
     <h2>실험이 종료되었습니다!</h2>
     <p>아래 버튼을 눌러 응답을 CSV 파일로 저장하세요.</p>
@@ -48,29 +44,26 @@
 
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script>
-  /* ====== CONFIG ====== */
+  /* ===== CONFIG ===== */
   const CSV_PATH   = 'example.csv';
   const AUDIO_DIR  = 'audio/';
   const AUDIO_DELAY = 200;
   const SOUND_OK   = 'okay.mp3';
   const SOUND_BEEP = 'beep.mp3';
 
-  /* ====== STATE ====== */
+  /* ===== STATE ===== */
   let trials = [];
   let idx = -1;
   const logs = [];
   let firstTrainIdx = 0;
   let firstPostIdx  = 0;
   let currentAudio  = null;
-  let trainMsgShown = false;
-  let postMsgShown  = false;
+  let trainShown=false, postShown=false;
+  const $ = q=>document.querySelector(q);
 
-  const $ = sel => document.querySelector(sel);
+  const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
 
-  /* Fisher–Yates */
-  const shuffle = a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
-
-  /* ====== LOAD CSV ====== */
+  /* === CSV LOAD === */
   async function loadCSV(){
     try{
       const text = await fetch(CSV_PATH).then(r=>r.text());
@@ -80,114 +73,80 @@
       const post  = shuffle(data.filter(d=>d.phase.trim()==='post'));
       firstTrainIdx = pre.length;
       firstPostIdx  = pre.length + train.length;
-      trials = [...pre,...train,...post];
-
+      trials=[...pre,...train,...post];
       $('#loading').classList.add('hidden');
-      $('#startBtn').disabled = false;
+      $('#startBtn').disabled=false;
       $('#startArea').classList.remove('hidden');
-    }catch(e){ $('#loading').textContent = 'CSV 로드 실패: '+e; }
+    }catch(e){ $('#loading').textContent='CSV 로드 실패:'+e; }
   }
 
-  /* ====== AUDIO ====== */
+  /* === AUDIO === */
   function playAudio(file){
-    const src = file.includes('/') ? file : AUDIO_DIR+file;
-    if(currentAudio){ currentAudio.pause(); currentAudio=null; }
-    currentAudio = new Audio(src);
-    currentAudio.play().catch(err=>console.error('Audio error',err));
+    const src=file.includes('/')?file:AUDIO_DIR+file;
+    if(currentAudio){currentAudio.pause();}
+    currentAudio=new Audio(src);
+    currentAudio.play().catch(console.error);
   }
 
-  /* ====== PHASE MESSAGE ====== */
-  function showPhaseMsg(type){
-    // hide trial visuals fully
+  /* === PHASE MESSAGE === */
+  function phaseMsg(type){
     $('#trialArea').classList.add('hidden');
-
-    const msg = type==='train'
+    const msg= type==='train'
       ? '지금부터는 <strong>트레이닝</strong>이 진행됩니다.<br>다음 버튼을 눌러 진행하세요.'
       : '지금부터는 <strong>확인 테스트</strong>를 진행합니다.<br>다음 버튼을 눌러 진행하세요.';
-    $('#phaseMsg').innerHTML = msg;
+    $('#phaseMsg').innerHTML=msg;
     $('#phaseArea').classList.remove('hidden');
-    $('#phaseNextBtn').onclick = ()=>{
-      $('#phaseArea').classList.add('hidden');
-      nextTrial();
-    };
+    $('#phaseNextBtn').onclick=()=>{$('#phaseArea').classList.add('hidden');nextTrial();};
   }
 
-  /* ====== TRIAL FLOW ====== */
-  function startExp(){
-    $('#startArea').classList.add('hidden');
-    idx=-1; nextTrial();
-  }
+  /* === FLOW === */
+  function startExp(){ $('#startArea').classList.add('hidden'); idx=-1; nextTrial(); }
 
   function nextTrial(){
     idx++;
-
-    if(idx===firstTrainIdx && !trainMsgShown){ trainMsgShown=true; return showPhaseMsg('train'); }
-    if(idx===firstPostIdx  && !postMsgShown ){ postMsgShown=true;  return showPhaseMsg('post'); }
-
+    if(idx===firstTrainIdx && !trainShown){ trainShown=true; idx--; return phaseMsg('train'); }
+    if(idx===firstPostIdx && !postShown ){ postShown =true; idx--; return phaseMsg('post'); }
     if(idx>=trials.length) return finishExp();
 
-    const t = trials[idx];
-
-    // reset trial screen
-    $('#instruction').classList.remove('hidden');
+    const t=trials[idx];
     $('#feedback').classList.add('hidden');
-    const choiceArea = $('#choiceArea');
-    choiceArea.innerHTML='';
-
-    [t.opt1,t.opt2].forEach(opt=>{
-      const b=document.createElement('button');
-      b.textContent=opt;
-      b.onclick=()=>handleChoice(t,opt);
-      choiceArea.appendChild(b);
-    });
-
+    $('#instruction').classList.remove('hidden');
+    const area=$('#choiceArea'); area.innerHTML='';
+    [t.opt1,t.opt2].forEach(opt=>{const b=document.createElement('button');b.textContent=opt;b.onclick=()=>choose(t,opt);area.appendChild(b);});
     $('#trialArea').classList.remove('hidden');
     setTimeout(()=>playAudio(t.audio),AUDIO_DELAY);
   }
 
-  function handleChoice(trial,choice){
-    const isTrain = trial.phase.trim()==='train';
-    const correct = choice===trial.answer;
+  function choose(trial,choice){
+    const isTrain=trial.phase.trim()==='train';
+    const answerKey=trial.answer.trim(); // e.g., 'opt1' or actual string
+    const correctChoice = trial[answerKey] ? trial[answerKey] : answerKey; // map if answer column points to opt1/opt2
+    const correct = isTrain ? (choice===correctChoice) : null;
 
     logs.push({type:trial.type,audio:trial.audio,cue1:trial.cue1,cue2:trial.cue2,phase:trial.phase,choice,correct:isTrain?correct:''});
 
-    // hide instruction & choices
+    // hide UI then show feedback if train
     $('#instruction').classList.add('hidden');
     $('#choiceArea').innerHTML='';
 
-    const fb=$('#feedback');
-    fb.textContent = correct? '정답입니다!':'정답이 아닙니다';
-    fb.className   = correct? 'correct':'wrong';
-    fb.classList.remove('hidden');
-
     if(isTrain){
+      const fb=$('#feedback');
+      fb.textContent=correct?'정답입니다!':'정답이 아닙니다';
+      fb.className=correct?'correct':'wrong';
+      fb.classList.remove('hidden');
       playAudio(correct?SOUND_OK:SOUND_BEEP);
       setTimeout(()=>nextTrial(),3500);
     }else{
-      setTimeout(()=>nextTrial(),300); // 짧게 바로 다음으로
+      setTimeout(()=>nextTrial(),300); // no feedback display
     }
   }
 
-  /* ====== FINISH & DOWNLOAD ====== */
-  function finishExp(){
-    $('#trialArea').classList.add('hidden');
-    $('#finishArea').classList.remove('hidden');
-  }
-  function downloadCSV(){
-    const header='type,audio,cue1,cue2,phase,choice,correct\n';
-    const rows=logs.map(l=>[l.type,l.audio,l.cue1,l.cue2,l.phase,l.choice,l.correct].join(',')).join('\n');
-    const blob=new Blob([header+rows],{type:'text/csv'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url; a.download='results.csv'; a.click();
-    URL.revokeObjectURL(url);
-  }
+  /* === FINISH === */
+  function finishExp(){ $('#trialArea').classList.add('hidden'); $('#finishArea').classList.remove('hidden'); }
+  function dlCSV(){ const head='type,audio,cue1,cue2,phase,choice,correct\n'; const rows=logs.map(l=>[l.type,l.audio,l.cue1,l.cue2,l.phase,l.choice,l.correct].join(',')).join('\n'); const blob=new Blob([head+rows],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='results.csv'; a.click(); }
 
-  /* ====== BINDINGS & INIT ====== */
-  $('#startBtn').onclick=startExp;
-  $('#downloadBtn').onclick=downloadCSV;
-  loadCSV();
+  /* === INIT === */
+  $('#startBtn').onclick=startExp; $('#downloadBtn').onclick=dlCSV; loadCSV();
   </script>
 </body>
 </html>
-
